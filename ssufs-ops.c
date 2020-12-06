@@ -116,7 +116,7 @@ int ssufs_write(int file_handle, char *buf, int nbytes)
 	char block[BLOCKSIZE];
 	int cur = 0, cur_block = 0;
 	int less_size = 0;
-	int less_block = 0;
+	int last_block = 0;
 
 	if (file_handle < 0 && file_handle >= MAX_OPEN_FILES)
 		return -1;
@@ -124,8 +124,13 @@ int ssufs_write(int file_handle, char *buf, int nbytes)
 	file = &file_handle_array[file_handle];
 	ssufs_readInode(file->inode_number, &tmp);
 
+	for (int i = 0; i < MAX_FILE_SIZE; ++i)
+		if (tmp.direct_blocks[i] == -1)
+		{
+			last_block = i - 1;
+			break;
+		}
 	less_size = (MAX_FILE_SIZE * BLOCKSIZE) - tmp.file_size + (tmp.file_size - file->offset);
-
 	if (less_size < nbytes)
 		return -1;
 
@@ -137,7 +142,15 @@ int ssufs_write(int file_handle, char *buf, int nbytes)
 		cur_block = (cur + file->offset) / BLOCKSIZE;
 		memset(block, 0, BLOCKSIZE);
 		if (tmp.direct_blocks[cur_block] == -1)
+		{
 			blocknum = ssufs_allocDataBlock();
+			if (blocknum == -1)
+			{
+				for (int i = last_block + 1; i < cur_block; ++i)
+					ssufs_freeDataBlock(tmp.direct_blocks[i]);
+				return -1;
+			}
+		}
 		else
 		{
 			ssufs_readDataBlock(tmp.direct_blocks[cur_block], block);
